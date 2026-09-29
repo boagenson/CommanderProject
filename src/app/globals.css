@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/*
+ * Commander Workshop theme: dark charcoal with warm parchment ink and gilt
+ * accents. The app is dark-only by design; tokens are centralized here.
+ */
+:root {
+  --bg: #121013;
+  --bg-raised: #17141a;
+  --panel: #1c181e;
+  --panel-2: #241f27;
+  --panel-3: #2d2731;
+  --border: #37303b;
+  --border-strong: #4a4150;
+  --ink: #ece3cf;
+  --ink-2: #c7bda9;
+  --ink-muted: #948a7d;
+  --gold: #c9a25a;
+  --gold-strong: #e3bf72;
+  --gold-soft: #c9a25a26;
+  --parchment: #e8dcc0;
+  --parchment-ink: #2b2219;
+
+  --ok: #62b57d;
+  --warn: #e3a64b;
+  --danger: #e26a52;
+  --info: #72a7dc;
+
+  /* Mana colors, tuned for the dark surface. Always paired with a label. */
+  --mana-w: #d4b866;
+  --mana-u: #3f8fe0;
+  --mana-b: #b86aae;
+  --mana-r: #e2583a;
+  --mana-g: #3fa35f;
+  --mana-c: #9aa0a6;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-raised: var(--bg-raised);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-panel-3: var(--panel-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--ink-muted);
+  --color-gold: var(--gold);
+  --color-gold-strong: var(--gold-strong);
+  --color-gold-soft: var(--gold-soft);
+  --color-parchment: var(--parchment);
+  --color-parchment-ink: var(--parchment-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-mana-w: var(--mana-w);
+  --color-mana-u: var(--mana-u);
+  --color-mana-b: var(--mana-b);
+  --color-mana-r: var(--mana-r);
+  --color-mana-g: var(--mana-g);
+  --color-mana-c: var(--mana-c);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --animate-rise: rise 0.35s ease-out both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #3a2a1a33, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #2a1f3a33, transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: #c9a25a55;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold-strong);
+  outline-offset: 2px;
+}
+
+/* Thin, themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Subtle parchment texture used by .parchment panels */
+.parchment {
+  background:
+    linear-gradient(180deg, #f3ead522, transparent 40%),
+    radial-gradient(120% 80% at 50% 0%, #e8dcc014, transparent 70%),
+    var(--panel);
+}
+
+.gilt-border {
+  border-image: linear-gradient(135deg, #e3bf7288, #c9a25a22 40%, #c9a25a22 60%, #e3bf7288) 1;
+}
+
+.recharts-tooltip-cursor {
+  fill: #ffffff08;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
