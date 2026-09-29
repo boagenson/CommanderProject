@@ -2,22 +2,57 @@
  * Pair recommended additions with cuts to produce REMOVE → ADD swaps.
  * Never modifies the deck; the UI applies swaps only after user approval.
  */
-import type { Deck, DeckAnalysis, DeckRecommendation, UpgradeGoal, UpgradeOptions, UpgradeSuggestion } from "@/lib/types";
+import type { Deck, DeckAnalysis, DeckRecommendation, ProtectionLevel, UpgradeGoal, UpgradeOptions, UpgradeSuggestion } from "@/lib/types";
 import { isLand } from "@/lib/cards/helpers";
+import { getIntent } from "@/lib/deck/intent";
 import { commanderIdentity, isCommanderLegal, isWithinIdentity } from "@/lib/rules/commander";
-import { GOAL_CATEGORIES, STRATEGY_PROFILES, computeNeeds, perCardCap, type ScoringContext } from "./context";
+import { GOAL_CATEGORIES, STRATEGY_PROFILES, computeNeeds, intentThemeIds, parseGoals, perCardCap, priorityWeights, type ScoringContext } from "./context";
 import { rankCuts, scoreCandidate, type CutCandidate } from "./score";
 import type { CandidatePool } from "./candidates";
+import { detectStrategies } from "@/lib/doctor/strategy";
+
+/** Protection level of a deck card (locked wins). */
+export function protectionOf(dc: { locked?: boolean; favorite?: boolean; flavorEssential?: boolean }): ProtectionLevel | undefined {
+  if (dc.locked) return "locked";
+  if (dc.favorite) return "favorite";
+  if (dc.flavorEssential) return "flavor";
+  return undefined;
+}
 
 export function buildContext(deck: Deck, analysis: DeckAnalysis, options: UpgradeOptions): ScoringContext {
+  const intent = options.intent ?? getIntent(deck);
+  const hints = parseGoals(intent.goals);
+  const weights = priorityWeights(intent.priorities);
+  const roles = new Map(Object.values(analysis.cardCategories).map((c) => [c.name, c.categories]));
+  const detected = detectStrategies({
+    commanders: deck.commanders.map((c) => c.card),
+    cards: deck.cards.filter((c) => (c.board ?? "main") === "main").map((c) => c.card),
+    themes: analysis.themes,
+    roles,
+    combos: analysis.combos.filter((c) => c.type !== "near"),
+  });
+  const protection = new Map<string, ProtectionLevel>();
+  for (const dc of deck.cards) {
+    const p = protectionOf(dc);
+    if (p) protection.set(dc.card.oracleId, p);
+  }
+  // Power level from intent unless the workshop overrides it.
+  const strategy = options.strategy ?? intent.power;
   return {
     identity: commanderIdentity(deck.commanders.map((c) => c.card)),
     analysis,
-    options,
-    profile: STRATEGY_PROFILES[options.strategy],
-    needs: computeNeeds(analysis, options.goals),
+    options: { ...options, strategy },
+    intent,
+    profile: STRATEGY_PROFILES[strategy],
+    weights,
+    hints,
+    intentThemes: intentThemeIds(intent, hints, detected[0]?.name),
+    avoidThemes: hints.avoidThemes,
+    needs: computeNeeds(analysis, options.goals, weights, hints),
     perCardCap: perCardCap(options.budget, options.maxSwaps),
     deckOracleIds: new Set([...deck.cards.map((d) => d.card.oracleId), ...deck.commanders.map((c) => c.card.oracleId)]),
+    protection,
+    mayCutFavorites: intent.philosophy === "Maximum Optimization",
   };
 }
 
@@ -70,16 +105,22 @@ export function planSwaps(deck: Deck, ctx: ScoringContext, recs: DeckRecommendat
     used.add(cut.deckCard.card.oracleId);
     spent += price;
     const removed = cut.deckCard.card;
+    const removeReason = cut.protection === "favorite"
+      ? `${cut.reason} You marked it a favorite; it is only suggested because the upgrade philosophy is Maximum Optimization.`
+      : cut.protection === "flavor"
+        ? `${cut.reason} It is marked Flavor Essential, so this is offered reluctantly; keep it if the theme matters more than the slot.`
+        : cut.reason;
     out.push({
       id: `${removed.oracleId}->${rec.card.oracleId}`,
       remove: removed,
       add: rec.card,
+      removeProtection: cut.protection,
       priceDelta: round2(price - (removed.prices.usd ?? 0)),
       manaValueDelta: rec.card.cmc - removed.cmc,
       removedCategories: cut.categories,
       addedCategories: rec.categories,
       explanation: rec.reasons.slice(0, 3).join(" "),
-      removeReason: cut.reason,
+      removeReason,
       score: round2(rec.score - cut.value),
     });
   }
@@ -112,14 +153,17 @@ function prioritizeGoals(recs: DeckRecommendation[], ctx: ScoringContext): DeckR
  * Prefer a cut sharing a category (like-for-like); else the weakest card overall.
  * Never replace a card with a pricier-in-mana card doing the same job
  * (Birds of Paradise → Fellwar Stone is a downgrade, not an upgrade).
+ * Protected (favorite/flavor) cards are only chosen when nothing else is left.
  */
 function pickCut(rec: DeckRecommendation, all: CutCandidate[]): CutCandidate | undefined {
   const pool = all.filter(
     (c) => !(c.deckCard.card.cmc < rec.card.cmc && c.categories.some((cat) => rec.categories.includes(cat))),
   );
-  const weakest = pool[0];
+  const unprotected = pool.filter((c) => !c.protection);
+  const candidates = unprotected.length ? unprotected : pool;
+  const weakest = candidates[0];
   if (!weakest) return undefined;
-  const sameRole = pool.slice(0, 12).find((c) => c.categories.some((cat) => rec.categories.includes(cat)));
+  const sameRole = candidates.slice(0, 12).find((c) => c.categories.some((cat) => rec.categories.includes(cat)));
   if (sameRole && sameRole.value - weakest.value < 1) return sameRole;
   return weakest;
 }

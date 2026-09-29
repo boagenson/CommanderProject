@@ -2,7 +2,7 @@
  * Immutable deck operations. Every function returns a new Deck with
  * `updatedAt` bumped; callers persist through the storage layer.
  */
-import type { Card, Deck, DeckCard, FunctionalCategory, UnresolvedCard } from "@/lib/types";
+import type { Card, Deck, DeckCard, DeckIntent, FunctionalCategory, PlaytestEntry, ProtectionLevel, ThematicTag, UnresolvedCard, WinConditionType } from "@/lib/types";
 import type { ResolvedEntry } from "./resolve";
 
 const touch = (deck: Deck, patch: Partial<Deck>): Deck => ({ ...deck, ...patch, updatedAt: Date.now() });
@@ -61,6 +61,56 @@ export function toggleLock(deck: Deck, oracleId: string): Deck {
   if (isCommander) return deck; // Commanders are never swap candidates.
   const dc = deck.cards.find((d) => d.card.oracleId === oracleId);
   return updateCard(deck, oracleId, { locked: !dc?.locked });
+}
+
+/** Toggle a protection level. Levels are independent flags; locked implies never cut. */
+export function setProtection(deck: Deck, oracleId: string, level: ProtectionLevel, on: boolean): Deck {
+  if (deck.commanders.some((c) => c.card.oracleId === oracleId)) return deck;
+  const key = level === "locked" ? "locked" : level === "favorite" ? "favorite" : "flavorEssential";
+  return updateCard(deck, oracleId, { [key]: on || undefined });
+}
+
+function toggleOverride<T extends string>(current: { add: T[]; remove: T[] } | undefined, value: T, state: "auto" | "on" | "off") {
+  const add = new Set(current?.add ?? []);
+  const remove = new Set(current?.remove ?? []);
+  add.delete(value);
+  remove.delete(value);
+  if (state === "on") add.add(value);
+  if (state === "off") remove.add(value);
+  return { add: [...add], remove: [...remove] };
+}
+
+export function setTagOverride(deck: Deck, oracleId: string, tag: ThematicTag, state: "auto" | "on" | "off"): Deck {
+  const commander = deck.commanders.find((c) => c.card.oracleId === oracleId);
+  const dc = commander ?? deck.cards.find((d) => d.card.oracleId === oracleId);
+  if (!dc) return deck;
+  const tagOverrides = toggleOverride(dc.tagOverrides, tag, state);
+  if (commander) {
+    return touch(deck, { commanders: deck.commanders.map((c) => (c.card.oracleId === oracleId ? { ...c, tagOverrides } : c)) });
+  }
+  return updateCard(deck, oracleId, { tagOverrides });
+}
+
+export function setIntent(deck: Deck, intent: DeckIntent): Deck {
+  return touch(deck, { intent });
+}
+
+export function setWinConditionOverride(deck: Deck, type: WinConditionType, state: "auto" | "on" | "off"): Deck {
+  return touch(deck, { winConditionOverrides: toggleOverride(deck.winConditionOverrides, type, state) });
+}
+
+export function addPlaytest(deck: Deck, entry: PlaytestEntry): Deck {
+  return touch(deck, { playtests: [entry, ...(deck.playtests ?? []).filter((p) => p.id !== entry.id)].sort((a, b) => b.date - a.date) });
+}
+
+export function removePlaytest(deck: Deck, id: string): Deck {
+  return touch(deck, { playtests: (deck.playtests ?? []).filter((p) => p.id !== id) });
+}
+
+/** Copy a deck (cards, intent, protections) under a new id and name. Versions and playtests start fresh. */
+export function duplicateDeck(deck: Deck, name: string): Deck {
+  const now = Date.now();
+  return { ...deck, id: newId(), name: name.trim() || `${deck.name} (copy)`, versions: [], playtests: [], createdAt: now, updatedAt: now };
 }
 
 export function setCategoryOverride(
