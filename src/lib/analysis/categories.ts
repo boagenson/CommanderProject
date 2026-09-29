@@ -8,7 +8,7 @@
  */
 import type { Card, DeckCard, FunctionalCategory } from "@/lib/types";
 import { hasType, isLand } from "@/lib/cards/helpers";
-import { hasKeyword, rulesText } from "./text";
+import { hasKeyword, ownTokenText, rulesText } from "./text";
 
 export interface CategoryRule {
   category: FunctionalCategory;
@@ -112,9 +112,10 @@ export const CATEGORY_RULES: CategoryRule[] = [
   {
     category: "Token Generation",
     test: (_card, t) => {
-      const m = /create[s]? [^.]*?(treasure|food|clue|blood|map|powerstone|gold)? tokens?/.exec(t);
-      if (!m) return null;
-      return /creature token|\d+\/\d+|x\/x/.test(t) ? "Makes creature tokens" : "Makes tokens";
+      // Ignore tokens made for opponents (Beast Within) and doublers (Parallel Lives).
+      const own = ownTokenText(t);
+      if (!/\bcreates? [^.]*?\btokens?\b|\binvestigate\b/.test(own)) return null;
+      return /creature token|\d+\/\d+|x\/x/.test(own) ? "Makes creature tokens" : "Makes tokens";
     },
   },
   {
@@ -146,6 +147,7 @@ export const CATEGORY_RULES: CategoryRule[] = [
         [/(?:target|each) opponent loses (?:that much|x) life|loses life equal to/, "Life drain engine"],
         [/double (?:the damage|strike)[^.]*creatures you control|creatures you control have double strike/, "Damage multiplier"],
         [/each opponent loses \d+ life[^.]*(?:whenever|for each)/, "Repeatable drain"],
+        [/whenever [^.]*(?:each opponent|target opponent|target player|each player) loses \d+ life/, "Repeatable drain"],
       ]);
       if (reason) return reason;
       const power = Number(card.power);

@@ -109,6 +109,8 @@ export interface DeckCard {
 export interface Commander {
   card: Card;
   locked?: boolean;
+  /** Manual corrections to functional categories. */
+  categoryOverrides?: DeckCard["categoryOverrides"];
 }
 
 /** A decklist line that could not be resolved against Scryfall. */

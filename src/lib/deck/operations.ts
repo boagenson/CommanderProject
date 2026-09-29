@@ -69,7 +69,8 @@ export function setCategoryOverride(
   category: FunctionalCategory,
   state: "auto" | "on" | "off",
 ): Deck {
-  const dc = deck.cards.find((d) => d.card.oracleId === oracleId);
+  const commander = deck.commanders.find((c) => c.card.oracleId === oracleId);
+  const dc = commander ?? deck.cards.find((d) => d.card.oracleId === oracleId);
   if (!dc) return deck;
   const add = new Set(dc.categoryOverrides?.add ?? []);
   const remove = new Set(dc.categoryOverrides?.remove ?? []);
@@ -77,7 +78,13 @@ export function setCategoryOverride(
   remove.delete(category);
   if (state === "on") add.add(category);
   if (state === "off") remove.add(category);
-  return updateCard(deck, oracleId, { categoryOverrides: { add: [...add], remove: [...remove] } });
+  const categoryOverrides = { add: [...add], remove: [...remove] };
+  if (commander) {
+    return touch(deck, {
+      commanders: deck.commanders.map((c) => (c.card.oracleId === oracleId ? { ...c, categoryOverrides } : c)),
+    });
+  }
+  return updateCard(deck, oracleId, { categoryOverrides });
 }
 
 /** Set commanders; any of those cards in the main deck move to the command zone. */
@@ -88,7 +95,8 @@ export function setCommanders(deck: Deck, commanders: Card[]): Deck {
     .filter((dc) => dc.quantity > 0);
   // Former commanders go back into the main deck so nothing silently disappears.
   const demoted = deck.commanders.filter((c) => !ids.has(c.card.oracleId));
-  let next = touch(deck, { commanders: commanders.map((card) => ({ card })), cards });
+  const kept = new Map(deck.commanders.map((c) => [c.card.oracleId, c]));
+  let next = touch(deck, { commanders: commanders.map((card) => ({ ...kept.get(card.oracleId), card })), cards });
   for (const d of demoted) next = addCard(next, d.card);
   return next;
 }

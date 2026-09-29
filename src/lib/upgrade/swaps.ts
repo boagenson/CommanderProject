@@ -54,7 +54,14 @@ export function planSwaps(deck: Deck, ctx: ScoringContext, recs: DeckRecommendat
     if (spent + price > ctx.options.budget + 1e-9) continue;
 
     const addIsLand = isLand(rec.card);
-    const pool = cuts.filter((c) => !used.has(c.deckCard.card.oracleId) && isLand(c.deckCard.card) === addIsLand);
+    const lowerCurve = ctx.options.goals.includes("Lower Mana Curve");
+    const pool = cuts.filter(
+      (c) =>
+        !used.has(c.deckCard.card.oracleId) &&
+        isLand(c.deckCard.card) === addIsLand &&
+        // With "Lower Mana Curve", a swap never raises mana value.
+        !(lowerCurve && !addIsLand && rec.card.cmc > c.deckCard.card.cmc),
+    );
     const cut = pickCut(rec, pool);
     if (!cut) continue;
     // Only suggest swaps that are an improvement by our own measure.
@@ -101,8 +108,15 @@ function prioritizeGoals(recs: DeckRecommendation[], ctx: ScoringContext): DeckR
   return [...first, ...recs.filter((r) => !first.includes(r))];
 }
 
-/** Prefer a cut sharing a category (like-for-like); else the weakest card overall. */
-function pickCut(rec: DeckRecommendation, pool: CutCandidate[]): CutCandidate | undefined {
+/**
+ * Prefer a cut sharing a category (like-for-like); else the weakest card overall.
+ * Never replace a card with a pricier-in-mana card doing the same job
+ * (Birds of Paradise → Fellwar Stone is a downgrade, not an upgrade).
+ */
+function pickCut(rec: DeckRecommendation, all: CutCandidate[]): CutCandidate | undefined {
+  const pool = all.filter(
+    (c) => !(c.deckCard.card.cmc < rec.card.cmc && c.categories.some((cat) => rec.categories.includes(cat))),
+  );
   const weakest = pool[0];
   if (!weakest) return undefined;
   const sameRole = pool.slice(0, 12).find((c) => c.categories.some((cat) => rec.categories.includes(cat)));

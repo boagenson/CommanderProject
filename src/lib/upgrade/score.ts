@@ -168,6 +168,8 @@ export function rankCuts(deckCards: DeckCard[], ctx: ScoringContext): CutCandida
     if (interactionNames.has(card.name)) value += 1.5;
 
     if (!land) {
+      // Cheap cards are worth as much to keep as they are to add (see scoreCandidate).
+      if (card.cmc <= 2) value += 0.6 * profile.efficiency;
       const over = card.cmc - profile.softMaxMv;
       if (over > 0) {
         value -= over * 0.5 * (options.goals.includes("Lower Mana Curve") ? 2 : 1);

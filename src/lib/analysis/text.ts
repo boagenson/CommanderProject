@@ -27,3 +27,26 @@ export function hasKeyword(card: Card, keyword: string) {
   const k = keyword.toLowerCase();
   return card.keywords.some((kw) => kw.toLowerCase() === k);
 }
+
+/**
+ * Rules text limited to tokens the card itself makes for you. Drops sentences
+ * where another player gets the tokens ("Its controller creates…"),
+ * replacement or doubling effects ("would create", "twice that many") and
+ * triggers on token creation ("Whenever you create or sacrifice a token").
+ */
+export function ownTokenText(text: string): string {
+  return text
+    .split(/(?<=[.\n])/)
+    .filter(
+      (s) =>
+        !/would (?:create|be created)|twice that many|whenever you create|(?:its controller|its owner|that player|target opponent|each opponent|an opponent|that (?:creature|permanent)'s controller) creates?\b/.test(s),
+    )
+    .join("");
+}
+
+/**
+ * Death triggers: "Whenever a creature you control dies", including the
+ * self-referencing "Whenever ~ or another creature dies" (Blood Artist).
+ */
+export const DEATH_TRIGGER =
+  /whenever (?:~ or )?(?:a|an|another|one or more)(?: other)?(?: nontoken)? creatures?(?: or planeswalkers?)?(?: you control)? (?:dies|die)/;

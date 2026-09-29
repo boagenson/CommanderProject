@@ -8,7 +8,7 @@
  */
 import type { Card } from "@/lib/types";
 import { hasType, isLand } from "@/lib/cards/helpers";
-import { hasKeyword } from "@/lib/analysis/text";
+import { DEATH_TRIGGER, hasKeyword, ownTokenText } from "@/lib/analysis/text";
 
 export type Matcher = (card: Card, text: string) => boolean;
 
@@ -32,12 +32,19 @@ const list = (names: string[], max = 3) =>
 const makesToken = (kind: string) =>
   new RegExp(`create[^.]*\\b${kind}\\b[^.]*tokens?|\\b${kind === "clue" ? "investigate" : "__never__"}\\b`);
 
+/** Makes a token of this kind, or is one (Heaped Harvest is an Artifact — Food). */
+const tokenEnabler = (kind: string, subtype: string): Matcher =>
+  any(re(makesToken(kind)), (c) => new RegExp(`\\b${subtype}\\b`).test(c.typeLine));
+
+/** Creates creature tokens for you (not for an opponent, not by doubling). */
+const makesCreatureTokens: Matcher = (_c, t) => /create[^.]*creature tokens?/.test(ownTokenText(t));
+
 export const THEMES: ThemeDefinition[] = [
   {
     id: "food",
     name: "Food",
     description: "Make Food tokens and cash them in for life, cards, or other value.",
-    enabler: re(makesToken("food")),
+    enabler: tokenEnabler("food", "Food"),
     payoff: re(/sacrifice (?:a|one or more|x) foods?|foods? you control|whenever you sacrifice a food|food tokens? you control|if you would create a[^.]*food/),
     explain: (e, p) =>
       `${list(e)} create Food, which ${list(p)} turn into extra value. Each Food is also a 3-life gain on demand, feeding lifegain triggers.`,
@@ -47,7 +54,7 @@ export const THEMES: ThemeDefinition[] = [
     id: "treasure",
     name: "Treasure",
     description: "Generate Treasure for ramp and sacrifice synergies.",
-    enabler: re(makesToken("treasure")),
+    enabler: tokenEnabler("treasure", "Treasure"),
     payoff: re(/sacrifice (?:a|one or more) treasures?|treasures? you control|whenever you sacrifice a treasure|if you would create a[^.]*treasure/),
     explain: (e, p) => `${list(e)} make Treasure; ${list(p)} reward having or sacrificing it.`,
     payoffWeight: 1.5,
@@ -56,7 +63,7 @@ export const THEMES: ThemeDefinition[] = [
     id: "clues",
     name: "Clues",
     description: "Investigate for card advantage and sacrifice triggers.",
-    enabler: re(makesToken("clue")),
+    enabler: tokenEnabler("clue", "Clue"),
     payoff: re(/sacrifice (?:a|one or more) clues?|clues? you control|whenever you sacrifice a clue|if you would create a[^.]*clue/),
     explain: (e, p) => `${list(e)} create Clues that ${list(p)} make more valuable.`,
     payoffWeight: 1.5,
@@ -76,7 +83,7 @@ export const THEMES: ThemeDefinition[] = [
     id: "tokens",
     name: "Tokens (Go Wide)",
     description: "Flood the board with creature tokens and reward width.",
-    enabler: re(/create[^.]*(?:\d+\/\d+|x\/x)[^.]*creature tokens?|create[^.]*creature tokens?/),
+    enabler: makesCreatureTokens,
     payoff: re(/creatures you control get \+|for each creature you control|whenever you create (?:a|one or more|or sacrifice a) tokens?|whenever (?:a|one or more|another) (?:creature )?tokens? (?:you control )?enters|if (?:an effect|you) would create one or more tokens|twice that many|number of creatures you control|whenever one or more creatures you control (?:attack|deal)/),
     explain: (e, p) => `${list(e)} put bodies on the board; ${list(p)} pay off for going wide.`,
   },
@@ -95,7 +102,7 @@ export const THEMES: ThemeDefinition[] = [
     enabler: (c, t) =>
       hasKeyword(c, "Lifelink") ||
       /\blifelink\b|you gain (?:\d+|x|that much|life equal)|gains? \d+ life|create[^.]*food tokens?/.test(t),
-    payoff: re(/whenever you gain life|if you (?:have )?gained (?:\d+|three|3) or more life|if you gained life this turn|life total|you gained life this turn|for each 1 life you gained|whenever you gain one or more life/),
+    payoff: re(/whenever you gain life|if you (?:have )?gained (?:\d+|three|3) or more life|if you gained life this turn|life total(?! can't change)|you gained life this turn|for each 1 life you gained|whenever you gain one or more life/),
     explain: (e, p) =>
       `${list(e)} gain life, and every instance triggers ${list(p)}. Several small gains per turn beat one big one.`,
     payoffWeight: 1.6,
@@ -104,8 +111,8 @@ export const THEMES: ThemeDefinition[] = [
     id: "aristocrats",
     name: "Aristocrats",
     description: "Sacrifice creatures and drain opponents with death triggers.",
-    enabler: re(/sacrifice (?:a|an|another|one or more|any number of) (?:other )?(?:creature|nontoken creature|permanent)s?[^:.]*:|create[^.]*creature tokens?/),
-    payoff: re(/whenever (?:a|another|one or more)(?: other)?(?: nontoken)? creatures?(?: you control)? (?:dies|die)|whenever you sacrifice (?:a|another|one or more) (?:creature|permanent)/),
+    enabler: any(re(/sacrifice (?:a|an|another|one or more|any number of) (?:other )?(?:creature|nontoken creature|permanent)s?[^:.]*:/), makesCreatureTokens),
+    payoff: any(re(DEATH_TRIGGER), re(/whenever you sacrifice (?:a|another|one or more) (?:creature|permanent)/)),
     explain: (e, p) =>
       `${list(e)} provide fodder or free sacrifice, and every creature that dies triggers ${list(p)}.`,
     payoffWeight: 1.6,
@@ -115,7 +122,7 @@ export const THEMES: ThemeDefinition[] = [
     name: "Sacrifice",
     description: "Repeatable sacrifice outlets that turn permanents into value.",
     enabler: re(/sacrifice (?:a|an|another|one or more|any number of|x) (?:other )?(?:creature|permanent|artifact|token|nontoken|food|treasure|clue)s?[^:.]*:/),
-    payoff: re(/whenever you (?:create or )?sacrifice|whenever (?:a|another|one or more) (?:other )?(?:creature|permanent|artifact)s? (?:you control )?(?:dies|die|is put into a graveyard)/),
+    payoff: any(re(DEATH_TRIGGER), re(/whenever you (?:create or )?sacrifice|whenever (?:~ or )?(?:a|another|one or more) (?:other )?(?:creature|permanent|artifact)s? (?:you control )?(?:dies|die|is put into a graveyard)/)),
     explain: (e, p) => `${list(e)} are sacrifice outlets; ${list(p)} trigger when you use them.`,
   },
   {

@@ -14,7 +14,7 @@ export const CATEGORY_TARGETS: Partial<Record<FunctionalCategory, number>> = {
   Protection: 3,
   Counterspells: 0,
   "Graveyard Recursion": 2,
-  Tutors: 1,
+  Tutors: 2,
   Finishers: 3,
 };
 

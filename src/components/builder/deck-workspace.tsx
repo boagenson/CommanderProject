@@ -80,7 +80,8 @@ export function DeckWorkspace({ id }: { id: string }) {
   }
 
   const detailEntry = detail ? deck.cards.find((d) => d.card.oracleId === detail.oracleId) : undefined;
-  const isCommander = detail ? deck.commanders.some((c) => c.card.oracleId === detail.oracleId) : false;
+  const commanderEntry = detail ? deck.commanders.find((c) => c.card.oracleId === detail.oracleId) : undefined;
+  const isCommander = !!commanderEntry;
 
   return (
     <div className="grid gap-6">
@@ -120,7 +121,7 @@ export function DeckWorkspace({ id }: { id: string }) {
         open={!!detail}
         onOpenChange={(o) => !o && setDetail(null)}
         actions={{
-          deckCard: detailEntry,
+          deckCard: detailEntry ?? (commanderEntry && { ...commanderEntry, quantity: 1 }),
           isCommander,
           identity: commanderIdentity(deck.commanders.map((c) => c.card)),
           onToggleLock: detailEntry ? () => edit((d) => toggleLock(d, detailEntry.card.oracleId)) : undefined,
@@ -131,7 +132,10 @@ export function DeckWorkspace({ id }: { id: string }) {
               }
             : undefined,
           onQuantity: detailEntry ? (q) => edit((d) => setQuantity(d, detailEntry.card.oracleId, q)) : undefined,
-          onCategory: detailEntry ? (cat, state) => edit((d) => setCategoryOverride(d, detailEntry.card.oracleId, cat, state)) : undefined,
+          onCategory:
+            detailEntry || commanderEntry
+              ? (cat, state) => edit((d) => setCategoryOverride(d, detail!.oracleId, cat, state))
+              : undefined,
           onAdd: !detailEntry && !isCommander && detail ? () => edit((d) => addCard(d, detail)) : undefined,
         }}
       />
