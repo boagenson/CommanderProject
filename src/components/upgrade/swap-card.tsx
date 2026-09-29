@@ -104,7 +104,7 @@ function SwapSide({ label, tone, name, onOpen, children }: { label: string; tone
   return (
     <div className="grid justify-items-center gap-1.5 text-center">
       <Badge tone={tone}>{label}</Badge>
-      <button type="button" onClick={onOpen} className="w-full max-w-[140px] transition-transform hover:-translate-y-0.5" aria-label={`Details for ${name}`}>
+      <button type="button" onClick={onOpen} className="w-full max-w-[110px] transition-transform hover:-translate-y-0.5" aria-label={`Details for ${name}`}>
         {children}
       </button>
       <p className="line-clamp-2 text-xs text-ink">{name}</p>

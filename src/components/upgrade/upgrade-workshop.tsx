@@ -242,7 +242,7 @@ function Workshop({ deck }: { deck: Deck }) {
             {plan.errors.length > 0 && visible.length > 0 && (
               <Callout tone="warning">Some searches failed, so suggestions may be incomplete: {plan.errors.join(" ")}</Callout>
             )}
-            <ul className="grid gap-4 2xl:grid-cols-2">
+            <ul className="grid gap-4 lg:grid-cols-2">
               {visible.map((s) => (
                 <SwapCard
                   key={s.id}

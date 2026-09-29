@@ -5,7 +5,7 @@ import type { DeckAnalysis, UpgradeGoal } from "@/lib/types";
 import { formatPrice } from "@/lib/cards/helpers";
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { SERIES } from "@/components/analysis/charts";
+import { SERIES, legendText } from "@/components/analysis/charts";
 
 type Direction = "up-good" | "down-good" | "neutral";
 interface Metric {
@@ -46,8 +46,8 @@ export function CompareView({ before, after, goals }: { before: DeckAnalysis; af
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th scope="col" className="py-2 font-medium">Metric</th>
-              <th scope="col" className="py-2 text-right font-medium">Current</th>
-              <th scope="col" className="py-2 text-right font-medium">Proposed</th>
+              <th scope="col" className="py-2 pl-3 text-right font-medium">Current</th>
+              <th scope="col" className="py-2 pl-3 text-right font-medium">Proposed</th>
               <th scope="col" className="py-2 pl-3 font-medium">Change</th>
             </tr>
           </thead>
@@ -97,7 +97,7 @@ export function CompareView({ before, after, goals }: { before: DeckAnalysis; af
                     cursor={{ fill: "#ffffff08" }}
                     labelFormatter={(l) => `Mana value ${l}`}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12, color: "#c7bda9" }} iconType="circle" iconSize={8} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} formatter={legendText} />
                   <Bar dataKey="Current" fill={SERIES.secondary} radius={[4, 4, 0, 0]} maxBarSize={20} />
                   <Bar dataKey="Proposed" fill={SERIES.primary} radius={[4, 4, 0, 0]} maxBarSize={20} />
                 </BarChart>

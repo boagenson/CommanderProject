@@ -39,6 +39,9 @@ const tooltipStyle = {
   cursor: { fill: "#ffffff08" },
 };
 
+/** Legend labels wear text ink; the swatch beside them carries the series color. */
+export const legendText = (value: string) => <span style={{ color: "#c7bda9" }}>{value}</span>;
+
 export interface TableColumn<T> {
   key: keyof T & string;
   label: string;
@@ -124,7 +127,7 @@ export function ManaCurveChart({ data }: { data: { mv: string; creatures: number
         <XAxis dataKey="mv" tick={{ fill: AXIS, fontSize: 12 }} axisLine={{ stroke: GRID }} tickLine={false} />
         <YAxis allowDecimals={false} tick={{ fill: AXIS, fontSize: 12 }} axisLine={false} tickLine={false} />
         <RTooltip {...tooltipStyle} labelFormatter={(l) => `Mana value ${l}`} />
-        <Legend wrapperStyle={{ fontSize: 12, color: "#c7bda9" }} iconType="circle" iconSize={8} />
+        <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} formatter={legendText} />
         <Bar dataKey="creatures" name="Creatures" stackId="a" fill={SERIES.primary} stroke={SURFACE} strokeWidth={2} maxBarSize={28} />
         <Bar dataKey="other" name="Noncreature spells" stackId="a" fill={SERIES.secondary} stroke={SURFACE} strokeWidth={2} radius={[4, 4, 0, 0]} maxBarSize={28}>
           <LabelList dataKey="count" position="top" fill="#c7bda9" fontSize={11} formatter={(v) => (Number(v) ? String(v) : "")} />
@@ -167,7 +170,7 @@ export function PipsVsSourcesChart({ data }: { data: { label: string; pips: numb
         <XAxis dataKey="label" tick={{ fill: AXIS, fontSize: 12 }} axisLine={{ stroke: GRID }} tickLine={false} />
         <YAxis tickFormatter={(v) => `${v}%`} tick={{ fill: AXIS, fontSize: 12 }} axisLine={false} tickLine={false} />
         <RTooltip {...tooltipStyle} formatter={(v) => `${v}%`} />
-        <Legend wrapperStyle={{ fontSize: 12, color: "#c7bda9" }} iconType="circle" iconSize={8} />
+        <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} formatter={legendText} />
         <Bar dataKey="pips" name="Share of colored pips" fill={SERIES.primary} radius={[4, 4, 0, 0]} maxBarSize={22} />
         <Bar dataKey="sources" name="Share of mana sources" fill={SERIES.secondary} radius={[4, 4, 0, 0]} maxBarSize={22} />
       </BarChart>
