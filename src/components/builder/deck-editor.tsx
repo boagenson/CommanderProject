@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, List, Plus, Search } from "lucide-react";
+import { ChevronDown, LayoutGrid, List, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Card, Deck, DeckAnalysis, DeckCard, DeckSection } from "@/lib/types";
 import { DECK_SECTIONS } from "@/lib/types";
@@ -30,6 +30,14 @@ export function DeckEditor({ deck, analysis, onOpenCard }: Props) {
   const showPrices = useDeckStore((s) => s.preferences.showPrices);
   const setPreferences = useDeckStore((s) => s.setPreferences);
   const [filter, setFilter] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggleSection = (key: string) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const identity = useMemo(() => commanderIdentity(deck.commanders.map((c) => c.card)), [deck.commanders]);
 
@@ -137,6 +145,20 @@ export function DeckEditor({ deck, analysis, onOpenCard }: Props) {
         <UnresolvedList unresolved={deck.unresolved} onDismiss={(i) => edit((d) => dismissUnresolved(d, i))} />
       )}
 
+      {sections.length > 1 && (
+        <nav aria-label="Jump to section" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          {sections.map((s) => (
+            <a
+              key={s.key}
+              href={`#section-${slug(s.key)}`}
+              className="shrink-0 rounded-full border border-line bg-bg-raised px-2.5 py-1 text-xs text-ink-2 hover:border-gold/60 hover:text-gold-strong"
+            >
+              {SECTION_LABELS[s.key] ?? s.key} <span className="text-muted">{s.count}</span>
+            </a>
+          ))}
+        </nav>
+      )}
+
       {sections.length === 0 ? (
         <Panel className="grid place-items-center gap-2 px-6 py-14 text-center">
           <Plus className="size-6 text-gold" aria-hidden />
@@ -146,8 +168,9 @@ export function DeckEditor({ deck, analysis, onOpenCard }: Props) {
       ) : view === "list" ? (
         <div className="columns-1 gap-4 xl:columns-2 2xl:columns-3">
           {sections.map((s) => (
-            <Panel key={s.key} className="mb-4 break-inside-avoid">
-              <SectionHeading label={s.key} count={s.count} />
+            <Panel key={s.key} id={`section-${slug(s.key)}`} className="mb-4 break-inside-avoid scroll-mt-24">
+              <SectionHeading label={s.key} count={s.count} collapsed={collapsed.has(s.key)} onToggle={() => toggleSection(s.key)} />
+              {!collapsed.has(s.key) && (
               <ul className="p-2">
                 {s.cards.map((dc) => (
                   <CardRow
@@ -162,14 +185,16 @@ export function DeckEditor({ deck, analysis, onOpenCard }: Props) {
                   />
                 ))}
               </ul>
+              )}
             </Panel>
           ))}
         </div>
       ) : (
         <div className="grid gap-6">
           {sections.map((s) => (
-            <section key={s.key} aria-label={`${s.key} (${s.count})`}>
-              <SectionHeading label={s.key} count={s.count} bare />
+            <section key={s.key} id={`section-${slug(s.key)}`} aria-label={`${s.key} (${s.count})`} className="scroll-mt-24">
+              <SectionHeading label={s.key} count={s.count} bare collapsed={collapsed.has(s.key)} onToggle={() => toggleSection(s.key)} />
+              {!collapsed.has(s.key) && (
               <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-7">
                 {s.cards.map((dc) => (
                   <CardTile
@@ -184,6 +209,7 @@ export function DeckEditor({ deck, analysis, onOpenCard }: Props) {
                   />
                 ))}
               </ul>
+              )}
             </section>
           ))}
         </div>
@@ -203,11 +229,35 @@ const SECTION_LABELS: Partial<Record<string, string>> = {
   Land: "Lands",
 };
 
-function SectionHeading({ label, count, bare }: { label: string; count: number; bare?: boolean }) {
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+function SectionHeading({
+  label,
+  count,
+  bare,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  bare?: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <h3 className={cn("flex items-center justify-between font-display text-sm tracking-wide text-ink", bare ? "border-b border-line pb-2" : "border-b border-line/70 px-4 py-3")}>
-      <span>{SECTION_LABELS[label] ?? label}</span>
-      <span className="rounded-full bg-panel-3 px-2 py-0.5 font-sans text-xs tabular-nums text-ink-2">{count}</span>
+    <h3 className={cn("font-display text-sm tracking-wide text-ink", bare ? "border-b border-line" : "border-b border-line/70")}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        className={cn("flex w-full items-center justify-between gap-2 text-left hover:text-gold-strong", bare ? "pb-2" : "px-4 py-3")}
+      >
+        <span className="flex items-center gap-2">
+          <ChevronDown className={cn("size-4 text-muted transition-transform", collapsed && "-rotate-90")} aria-hidden />
+          {SECTION_LABELS[label] ?? label}
+        </span>
+        <span className="rounded-full bg-panel-3 px-2 py-0.5 font-sans text-xs tabular-nums text-ink-2">{count}</span>
+      </button>
     </h3>
   );
 }
