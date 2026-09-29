@@ -1,0 +1,148 @@
+/**
+ * Immutable deck operations. Every function returns a new Deck with
+ * `updatedAt` bumped; callers persist through the storage layer.
+ */
+import type { Card, Deck, DeckCard, FunctionalCategory, UnresolvedCard } from "@/lib/types";
+import type { ResolvedEntry } from "./resolve";
+
+const touch = (deck: Deck, patch: Partial<Deck>): Deck => ({ ...deck, ...patch, updatedAt: Date.now() });
+
+export function newId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `d_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function createDeck(name: string, commanders: Card[] = []): Deck {
+  const now = Date.now();
+  return {
+    id: newId(),
+    name: name.trim() || "Untitled Deck",
+    commanders: commanders.map((card) => ({ card })),
+    cards: [],
+    unresolved: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+const sameCard = (a: Card, b: Card) => a.oracleId === b.oracleId;
+
+export function addCard(deck: Deck, card: Card, quantity = 1, board: "main" | "maybe" = "main"): Deck {
+  const idx = deck.cards.findIndex((dc) => sameCard(dc.card, card) && (dc.board ?? "main") === board);
+  if (idx >= 0) {
+    const cards = deck.cards.slice();
+    cards[idx] = { ...cards[idx], quantity: cards[idx].quantity + quantity };
+    return touch(deck, { cards });
+  }
+  return touch(deck, { cards: [...deck.cards, { card, quantity, board }] });
+}
+
+export function removeCard(deck: Deck, oracleId: string, board: "main" | "maybe" = "main"): Deck {
+  return touch(deck, {
+    cards: deck.cards.filter((dc) => !(dc.card.oracleId === oracleId && (dc.board ?? "main") === board)),
+  });
+}
+
+export function setQuantity(deck: Deck, oracleId: string, quantity: number): Deck {
+  if (quantity <= 0) return removeCard(deck, oracleId);
+  return touch(deck, {
+    cards: deck.cards.map((dc) => (dc.card.oracleId === oracleId && (dc.board ?? "main") === "main" ? { ...dc, quantity } : dc)),
+  });
+}
+
+export function updateCard(deck: Deck, oracleId: string, patch: Partial<DeckCard>): Deck {
+  return touch(deck, {
+    cards: deck.cards.map((dc) => (dc.card.oracleId === oracleId ? { ...dc, ...patch } : dc)),
+  });
+}
+
+export function toggleLock(deck: Deck, oracleId: string): Deck {
+  const isCommander = deck.commanders.some((c) => c.card.oracleId === oracleId);
+  if (isCommander) return deck; // Commanders are never swap candidates.
+  const dc = deck.cards.find((d) => d.card.oracleId === oracleId);
+  return updateCard(deck, oracleId, { locked: !dc?.locked });
+}
+
+export function setCategoryOverride(
+  deck: Deck,
+  oracleId: string,
+  category: FunctionalCategory,
+  state: "auto" | "on" | "off",
+): Deck {
+  const dc = deck.cards.find((d) => d.card.oracleId === oracleId);
+  if (!dc) return deck;
+  const add = new Set(dc.categoryOverrides?.add ?? []);
+  const remove = new Set(dc.categoryOverrides?.remove ?? []);
+  add.delete(category);
+  remove.delete(category);
+  if (state === "on") add.add(category);
+  if (state === "off") remove.add(category);
+  return updateCard(deck, oracleId, { categoryOverrides: { add: [...add], remove: [...remove] } });
+}
+
+/** Set commanders; any of those cards in the main deck move to the command zone. */
+export function setCommanders(deck: Deck, commanders: Card[]): Deck {
+  const ids = new Set(commanders.map((c) => c.oracleId));
+  const cards = deck.cards
+    .map((dc) => (ids.has(dc.card.oracleId) && (dc.board ?? "main") === "main" ? { ...dc, quantity: dc.quantity - 1 } : dc))
+    .filter((dc) => dc.quantity > 0);
+  // Former commanders go back into the main deck so nothing silently disappears.
+  const demoted = deck.commanders.filter((c) => !ids.has(c.card.oracleId));
+  let next = touch(deck, { commanders: commanders.map((card) => ({ card })), cards });
+  for (const d of demoted) next = addCard(next, d.card);
+  return next;
+}
+
+/** Merge resolved import entries into a deck. */
+export function importEntries(
+  deck: Deck,
+  resolved: ResolvedEntry[],
+  unresolved: UnresolvedCard[],
+  opts: { replace?: boolean } = {},
+): Deck {
+  let next: Deck = opts.replace ? touch(deck, { cards: [], unresolved: [] }) : deck;
+  const commanderCards = resolved.filter((r) => r.entry.section === "commander").map((r) => r.card);
+  if (commanderCards.length) {
+    const existing = opts.replace ? [] : next.commanders.map((c) => c.card);
+    const merged = [...existing];
+    for (const c of commanderCards) if (!merged.some((m) => m.oracleId === c.oracleId)) merged.push(c);
+    next = touch(next, { commanders: merged.map((card) => ({ card })) });
+  }
+  const commanderIds = new Set(next.commanders.map((c) => c.card.oracleId));
+  for (const { entry, card } of resolved) {
+    if (entry.section === "commander") continue;
+    // A commander also listed in the 99 is almost always an export artifact.
+    if (entry.section === "main" && commanderIds.has(card.oracleId)) continue;
+    next = addCard(next, card, entry.quantity, entry.section === "maybe" ? "maybe" : "main");
+  }
+  return touch(next, { unresolved: [...(opts.replace ? [] : next.unresolved), ...unresolved] });
+}
+
+/** Replace `removeId` with `add` (used by upgrade swaps). */
+export function swapCard(deck: Deck, removeOracleId: string, add: Card): Deck {
+  const dc = deck.cards.find((d) => d.card.oracleId === removeOracleId && (d.board ?? "main") === "main");
+  let next = deck;
+  if (dc) next = dc.quantity > 1 ? setQuantity(next, removeOracleId, dc.quantity - 1) : removeCard(next, removeOracleId);
+  return addCard(next, add);
+}
+
+export function dismissUnresolved(deck: Deck, index?: number): Deck {
+  return touch(deck, { unresolved: index == null ? [] : deck.unresolved.filter((_, i) => i !== index) });
+}
+
+/** Plain-text export compatible with the importer. */
+export function exportDecklist(deck: Deck): string {
+  const lines: string[] = [];
+  if (deck.commanders.length) {
+    lines.push("Commander");
+    for (const c of deck.commanders) lines.push(`1 ${c.card.name}`);
+    lines.push("", "Deck");
+  }
+  for (const dc of deck.cards.filter((d) => (d.board ?? "main") === "main")) lines.push(`${dc.quantity} ${dc.card.name}`);
+  const maybe = deck.cards.filter((d) => d.board === "maybe");
+  if (maybe.length) {
+    lines.push("", "Maybeboard");
+    for (const dc of maybe) lines.push(`${dc.quantity} ${dc.card.name}`);
+  }
+  return lines.join("\n");
+}
