@@ -18,7 +18,7 @@ export function UnresolvedList({
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-medium text-ink">
           <TriangleAlert className="size-4 text-warn" aria-hidden />
-          {unresolved.length + parseErrors.length} line{unresolved.length + parseErrors.length === 1 ? "" : "s"} couldn't be added
+          {unresolved.length + parseErrors.length} line{unresolved.length + parseErrors.length === 1 ? "" : "s"} couldn&apos;t be added
         </p>
         {onDismiss && unresolved.length > 0 && (
           <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => onDismiss()}>

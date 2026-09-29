@@ -132,7 +132,7 @@ export function NewDeckForm() {
             />
             <p className="mt-1.5 text-xs text-muted" aria-live="polite">
               {lineCount ? `${lineCount} cards across ${parsed.entries.length} lines` : "Lines like “1 Sol Ring” or “1 Frodo, Adventurous Hobbit (LTC) 2” are supported."}
-              {parsed.errors.length > 0 && <span className="text-warn"> · {parsed.errors.length} line(s) can't be read</span>}
+              {parsed.errors.length > 0 && <span className="text-warn"> · {parsed.errors.length} line(s) can&apos;t be read</span>}
             </p>
           </div>
           {error && <Callout tone="error">{error}</Callout>}

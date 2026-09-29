@@ -104,7 +104,7 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
         </div>
       </div>
 
-      {outside && <Callout tone="error" title="Outside color identity">This card's color identity doesn't fit your commander.</Callout>}
+      {outside && <Callout tone="error" title="Outside color identity">This card&apos;s color identity doesn&apos;t fit your commander.</Callout>}
       {qtyWarning && <Callout tone="warning">{qtyWarning}</Callout>}
 
       {actions && (dc || actions.onAdd) && (

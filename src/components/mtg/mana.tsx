@@ -49,7 +49,7 @@ export function ManaCost({ cost, className }: { cost: string; className?: string
     <span className={cn("inline-flex items-center gap-0.5 align-middle", className)} aria-label={`Mana cost ${cost}`} role="img">
       {faces.map((face, fi) => (
         <span key={fi} className="inline-flex items-center gap-0.5">
-          {fi > 0 && <span className="mx-1 text-muted">//</span>}
+          {fi > 0 && <span className="mx-1 text-muted">{"//"}</span>}
           {[...face.matchAll(/\{([^}]+)\}/g)].map((m, i) => (
             <ManaSymbol key={i} symbol={m[1]} />
           ))}
