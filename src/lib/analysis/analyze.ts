@@ -33,7 +33,7 @@ export function analyzeDeck(deck: Deck, currency: "usd" | "eur" | "tix" = "usd")
   >;
   const cardCategories: Record<string, CategorizedCard> = {};
   const entries = [
-    ...deck.commanders.map((c) => ({ card: c.card, categoryOverrides: undefined })),
+    ...deck.commanders,
     ...main,
   ];
   for (const dc of entries) {

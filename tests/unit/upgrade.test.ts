@@ -30,7 +30,7 @@ describe("upgrade engine", () => {
     expect(names).not.toContain("Grim Lavamancer"); // off-color
     expect(names).not.toContain("Mana Crypt"); // banned
     expect(names).not.toContain("The Great Henge"); // over budget
-    expect(names.slice(0, 5)).toEqual(expect.arrayContaining(["Mirkwood Bats"]));
+    expect(names.slice(0, 5)).toEqual(expect.arrayContaining(["Bastion of Remembrance", "Cruel Celebrant"]));
     for (const r of recs) expect(r.reasons.length).toBeGreaterThan(0);
   });
 
@@ -65,4 +65,26 @@ describe("upgrade engine", () => {
     // Sanity: the cut card exists in the deck.
     expect(fixtureCard(land!.remove.name)).toBeDefined();
   });
+
+  it("never swaps a card for a costlier card with the same role", () => {
+    const ctx = buildContext(deck, analysis, options);
+    for (const s of planSwaps(deck, ctx, recommend(deck, ctx, pool()))) {
+      const shared = s.addedCategories.some((c) => s.removedCategories.includes(c));
+      if (shared) expect(s.add.cmc).toBeLessThanOrEqual(s.remove.cmc);
+    }
+  });
+
+  it("does not raise mana value when lowering the curve", () => {
+    const ctx = buildContext(deck, analysis, { ...options, goals: ["Lower Mana Curve"] });
+    const swaps = planSwaps(deck, ctx, recommend(deck, ctx, pool()));
+    expect(swaps.length).toBeGreaterThan(0);
+    for (const s of swaps) expect(s.manaValueDelta).toBeLessThanOrEqual(0);
+  });
+
+  it("values cheap cards above pricier cards in the same role when choosing cuts", () => {
+    const ctx = buildContext(deck, analysis, options);
+    const value = new Map(rankCuts(deck.cards, ctx).map((c) => [c.deckCard.card.name, c.value]));
+    expect(value.get("Birds of Paradise")!).toBeGreaterThan(value.get("Cultivate")!);
+  });
 });
+

@@ -59,7 +59,7 @@ export function CardSearch() {
   const set = <K extends keyof CardSearchFilters>(k: K, v: CardSearchFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
   const num = (v: string) => (v === "" ? undefined : Number(v));
 
-  async function run(nextPage = 1) {
+  async function run(nextPage = 1, sort = order) {
     if (!query.trim()) {
       setError("Add at least one filter to search.");
       return;
@@ -70,7 +70,7 @@ export function CardSearch() {
     setLoading(true);
     setError(null);
     try {
-      const res = await searchCards(query, { page: nextPage, order, signal: controller.signal });
+      const res = await searchCards(query, { page: nextPage, order: sort, signal: controller.signal });
       setResults((prev) => (nextPage === 1 ? res.cards : [...prev, ...res.cards]));
       setTotal(res.total);
       setHasMore(res.hasMore);
@@ -97,11 +97,13 @@ export function CardSearch() {
       toast("Create or select a deck first.", "error");
       return;
     }
-    const existing = deck.cards.find((d) => d.card.oracleId === card.oracleId);
+    // Read the latest saved deck so quick successive adds don't overwrite each other.
+    const current = useDeckStore.getState().decks.find((d) => d.id === deck.id) ?? deck;
+    const existing = current.cards.find((d) => d.card.oracleId === card.oracleId && (d.board ?? "main") === "main");
     const warning = existing ? quantityWarning(card, existing.quantity + 1) : null;
     if (warning) toast(warning, "error");
     if (identity && !isWithinIdentity(card, identity)) toast(`${card.name} is outside ${deck.name}'s color identity.`, "error");
-    await saveDeck(addCard(deck, card));
+    await saveDeck(addCard(current, card));
     if (!warning) toast(`Added ${card.name} to ${deck.name}.`, "success");
   }
 
@@ -275,7 +277,9 @@ export function CardSearch() {
               className="h-9 w-40 text-xs"
               value={order}
               onChange={(e) => {
-                setOrder(e.target.value as typeof order);
+                const next = e.target.value as typeof order;
+                setOrder(next);
+                if (searched) void run(1, next);
               }}
             >
               <option value="edhrec">Commander popularity</option>

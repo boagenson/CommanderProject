@@ -5,7 +5,7 @@
  * Add new interactions by appending to `INTERACTION_RULES`.
  */
 import type { Card } from "@/lib/types";
-import { rulesText } from "@/lib/analysis/text";
+import { DEATH_TRIGGER, ownTokenText, rulesText } from "@/lib/analysis/text";
 import type { Matcher } from "./themes";
 
 export interface InteractionRule {
@@ -59,7 +59,7 @@ export const INTERACTION_RULES: InteractionRule[] = [
     source: (_c, t) =>
       /(?:if (?:an effect|you) would create one or more tokens|tokens would be created)[^.]*(?:twice that many|that many plus)/.test(t) ||
       /create twice that many of those tokens/.test(t),
-    target: (_c, t) => /create[^.]*tokens?|\binvestigate\b/.test(t),
+    target: (_c, t) => /create[^.]*tokens?|\binvestigate\b/.test(ownTokenText(t)),
     explain: (s, t) => `${names(s)} increase${s.length === 1 ? "s" : ""} every token made by ${names(t)}.`,
     weight: 2,
   },
@@ -88,7 +88,7 @@ export const INTERACTION_RULES: InteractionRule[] = [
     title: "Sacrifice outlets + death triggers",
     themes: ["aristocrats", "sacrifice"],
     source: (_c, t) => /sacrifice (?:a|an|another) (?:other )?creature[^:.]*:/.test(t),
-    target: (_c, t) => /whenever (?:a|another|one or more)(?: other)? creatures?(?: you control)? (?:dies|die)/.test(t),
+    target: (_c, t) => DEATH_TRIGGER.test(t),
     explain: (s, t) =>
       `${names(s)} let you sacrifice creatures at will, turning each death into a trigger for ${names(t)}.`,
     weight: 1.5,

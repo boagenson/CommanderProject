@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { analyzeDeck } from "@/lib/analysis/analyze";
 import { classifyCard } from "@/lib/analysis/categories";
+import { cardThemeRoles } from "@/lib/synergy/engine";
+import { setCategoryOverride } from "@/lib/deck/operations";
 import { deckFromText, fixtureCard } from "./helpers";
 
 const cats = (name: string) => classifyCard(fixtureCard(name)).map((m) => m.category);
@@ -23,8 +25,17 @@ describe("functional categories", () => {
     ["Soul Warden", "Lifegain"],
     ["Viscera Seer", "Sacrifice Outlets"],
     ["Sanguine Bond", "Finishers"],
+    ["Blood Artist", "Finishers"],
+    ["Bastion of Remembrance", "Finishers"],
   ] as const)("%s → %s", (name, category) => {
     expect(cats(name)).toContain(category);
+  });
+
+  it("only counts tokens the card makes for you", () => {
+    expect(cats("Beast Within")).not.toContain("Token Generation"); // the opponent gets the token
+    expect(cats("Generous Gift")).not.toContain("Token Generation");
+    expect(cats("Parallel Lives")).not.toContain("Token Generation"); // doubler, not a maker
+    expect(cats("Mirkwood Bats")).not.toContain("Token Generation"); // reacts to tokens
   });
 
   it("does not treat land searches as tutors", () => {
@@ -84,5 +95,37 @@ describe("analyzeDeck on the Frodo & Sam sample", () => {
     expect(a.manaProduction.sources.G).toBeGreaterThan(10);
     expect(a.manaProduction.pips.W).toBeGreaterThan(0);
     expect(a.manaProduction.mismatches.map((m) => m.color)).toEqual(["W", "B", "G"]);
+  });
+});
+
+describe("theme roles", () => {
+  const roles = (name: string) => Object.fromEntries(cardThemeRoles(fixtureCard(name)).map((r) => [r.themeId, r.role]));
+
+  it.each(["Blood Artist", "Zulaport Cutthroat", "Cruel Celebrant"])("%s is an aristocrats payoff", (name) => {
+    expect(["payoff", "both"]).toContain(roles(name).aristocrats);
+  });
+
+  it("counts Food artifacts as Food enablers", () => {
+    expect(roles("Heaped Harvest").food).toBeDefined();
+  });
+
+  it("does not read Teferi's Protection as a lifegain payoff", () => {
+    expect(roles("Teferi's Protection").lifegain).toBeUndefined();
+  });
+
+  it("pairs sacrifice outlets with self-referencing death triggers", () => {
+    const a = analyzeDeck(deckFromText());
+    const combo = a.themes.flatMap((t) => t.interactions).find((i) => i.ruleId === "sac-outlet-death-trigger");
+    expect(combo?.targets).toEqual(expect.arrayContaining(["Blood Artist", "Zulaport Cutthroat"]));
+  });
+});
+
+describe("manual category corrections", () => {
+  it("applies to commanders too", () => {
+    const deck = deckFromText();
+    const sam = deck.commanders.find((c) => c.card.name.startsWith("Sam"))!;
+    const next = setCategoryOverride(deck, sam.card.oracleId, "Ramp", "on");
+    expect(analyzeDeck(next).categories.Ramp).toContain(sam.card.name);
+    expect(analyzeDeck(deck).categories.Ramp).not.toContain(sam.card.name);
   });
 });
