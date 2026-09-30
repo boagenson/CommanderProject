@@ -222,13 +222,13 @@ function SaveSandboxDialog({
   async function save() {
     if (mode === "version") {
       const merged: Deck = { ...sandboxDeck, updatedAt: Date.now() };
-      const version = createVersion(merged, sandboxAnalysis, notes, name || undefined);
+      const version = createVersion(merged, sandboxAnalysis, notes, name || undefined, cardCounts(deck));
       edit(() => addVersion(merged, version));
       reset(deck.id);
       toast(`Saved as version ${version.number}.`, "success");
     } else {
       const copy = duplicateDeck(sandboxDeck, name || `${deck.name} (sandbox)`);
-      const version = createVersion(copy, sandboxAnalysis, notes || `Forked from ${deck.name}`, `${copy.name} — v1`);
+      const version = createVersion(copy, sandboxAnalysis, notes || `Forked from ${deck.name}`, `${copy.name} — v1`, cardCounts(deck));
       await saveDeck(addVersion(copy, version));
       reset(deck.id);
       toast(`Created "${copy.name}".`, "success");

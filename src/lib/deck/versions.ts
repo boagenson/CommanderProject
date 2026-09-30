@@ -30,13 +30,18 @@ export function versionCounts(v: DeckVersion): Map<string, number> {
   return out;
 }
 
-/** Create a version snapshot of `deck` (which should already include the changes). */
-export function createVersion(deck: Deck, analysis: DeckAnalysis, notes = "", name?: string): DeckVersion {
+/**
+ * Create a version snapshot of `deck` (which should already include the
+ * changes). The change log is computed against the previous version, or
+ * against `baseline` (e.g. the deck before a sandbox was applied) when given.
+ */
+export function createVersion(deck: Deck, analysis: DeckAnalysis, notes = "", name?: string, baseline?: Map<string, number>): DeckVersion {
   const versions = deck.versions ?? [];
   const prev = versions[versions.length - 1];
   const number = (prev?.number ?? 0) + 1;
   const now = cardCounts(deck);
-  const diff = prev ? diffCardLists(versionCounts(prev), now) : { added: [], removed: [], unchanged: [] };
+  const from = baseline ?? (prev ? versionCounts(prev) : undefined);
+  const diff = from ? diffCardLists(from, now) : { added: [], removed: [], unchanged: [] };
   return {
     id: newId(),
     number,
