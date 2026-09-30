@@ -1,30 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { CheckCheck, Coins, Lock, LockOpen, LoaderCircle, Plus, RotateCcw, Save, Search, Target, WandSparkles } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CheckCheck, Coins, FlaskConical, LoaderCircle, Plus, RotateCcw, Save, Search, Shield, Target, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { Card, Deck, Strategy, UpgradeGoal, UpgradeOptions } from "@/lib/types";
+import type { Card, Deck, DeckCard, ProtectionLevel, Strategy, UpgradeGoal, UpgradeOptions } from "@/lib/types";
 import { STRATEGIES, UPGRADE_GOALS } from "@/lib/types";
 import { formatPrice } from "@/lib/cards/helpers";
 import { analyzeDeck } from "@/lib/analysis/analyze";
-import { addCard, swapCard, toggleLock } from "@/lib/deck/operations";
+import { getIntent } from "@/lib/deck/intent";
+import { addCard, setProtection, swapCard, toggleLock } from "@/lib/deck/operations";
 import { commanderIdentity } from "@/lib/rules/commander";
 import { describeScryfallError } from "@/lib/scryfall";
 import { generateUpgradePlan, type UpgradePlan } from "@/lib/upgrade";
 import { useDecks, useDeckStore } from "@/lib/state/deck-store";
+import { useSandboxStore } from "@/lib/state/sandbox-store";
 import { toast } from "@/lib/state/toast-store";
 import { useAnalysis } from "@/lib/state/use-analysis";
 import { useDeckEditor } from "@/lib/state/use-deck-editor";
 import { CardDetailDialog } from "@/components/mtg/card-detail";
 import { CardImage } from "@/components/mtg/card-image";
+import { ProtectionBadges, ProtectionToggles } from "@/components/mtg/protection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { ToggleChip } from "@/components/ui/toggle-chip";
-import { cn } from "@/components/ui/utils";
 import { CompareView } from "./compare-view";
 import { SwapCard, type SwapState } from "./swap-card";
 
@@ -83,7 +85,8 @@ function Workshop({ deck }: { deck: Deck }) {
 
   const [budgetPreset, setBudgetPreset] = useState<number | "custom">(BUDGETS.includes(prefs.defaultBudget) ? prefs.defaultBudget : "custom");
   const [customBudget, setCustomBudget] = useState(String(prefs.defaultBudget));
-  const [strategy, setStrategy] = useState<Strategy>(prefs.defaultStrategy);
+  const intent = getIntent(deck);
+  const [strategy, setStrategy] = useState<Strategy>(deck.intent?.power ?? prefs.defaultStrategy);
   const [goals, setGoals] = useState<UpgradeGoal[]>(["More Synergy"]);
   const [maxSwaps, setMaxSwaps] = useState(8);
   const [plan, setPlan] = useState<UpgradePlan | null>(null);
@@ -116,7 +119,7 @@ function Workshop({ deck }: { deck: Deck }) {
     setError(null);
     setStates({});
     try {
-      const options: UpgradeOptions = { budget, strategy, goals, maxSwaps };
+      const options: UpgradeOptions = { budget, strategy, goals, maxSwaps, intent: { ...intent, power: strategy } };
       const result = await generateUpgradePlan(deck, analysis, options, { onProgress: (d, t) => setProgress([d, t]) });
       setPlan(result);
       if (result.errors.length && !result.suggestions.length) setError(result.errors.join(" "));
@@ -138,6 +141,15 @@ function Workshop({ deck }: { deck: Deck }) {
     });
     setPlan((p) => (p ? { ...p, suggestions: p.suggestions.filter((s) => states[s.id] !== "accepted") } : p));
     setStates({});
+  }
+
+  const applyPackage = useSandboxStore((s) => s.applyPackage);
+  const router = useRouter();
+  function tryInSandbox() {
+    if (!accepted.length) return;
+    applyPackage(deck.id, accepted, "Upgrade package");
+    toast(`Sent ${accepted.length} swap${accepted.length === 1 ? "" : "s"} to the Sandbox.`, "success");
+    router.push(`/decks/${deck.id}#sandbox`);
   }
 
   const deckCardFor = (card: Card) => deck.cards.find((d) => d.card.oracleId === card.oracleId);
@@ -173,8 +185,23 @@ function Workshop({ deck }: { deck: Deck }) {
               <p className="mt-1.5 text-[11px] text-muted">Total spent on added cards stays within {formatPrice(budget)}.</p>
             </fieldset>
 
+            <div className="rounded-xl border border-gold/25 bg-gold-soft/20 p-3 text-xs">
+              <p className="mb-1 flex items-center justify-between font-medium text-gold-strong">
+                Deck intent
+                <Link href={`/decks/${deck.id}#doctor`} className="font-normal text-gold-strong hover:underline">
+                  Edit
+                </Link>
+              </p>
+              <p className="text-ink-2">
+                {intent.primaryStrategy ?? "Strategy auto-detected"}
+                {intent.secondaryStrategies.length ? ` + ${intent.secondaryStrategies.join(", ")}` : ""} · {intent.philosophy}
+              </p>
+              {intent.priorities.length > 0 && <p className="mt-0.5 text-muted">Priorities: {intent.priorities.join(", ")}</p>}
+              {intent.goals.trim() && <p className="mt-0.5 line-clamp-2 text-muted">&ldquo;{intent.goals.trim()}&rdquo;</p>}
+            </div>
+
             <fieldset>
-              <legend className="mb-2 text-xs font-medium text-ink-2">Strategy</legend>
+              <legend className="mb-2 text-xs font-medium text-ink-2">Power level</legend>
               <div className="grid grid-cols-2 gap-1.5">
                 {STRATEGIES.map((s) => (
                   <ToggleChip key={s} pressed={strategy === s} onPressedChange={() => setStrategy(s)} className="justify-center">
@@ -207,14 +234,14 @@ function Workshop({ deck }: { deck: Deck }) {
             {!deck.commanders.length && <p className="text-xs text-warn">Choose a commander first so suggestions respect its color identity.</p>}
           </PanelBody>
         </Panel>
-        <LockedCards deck={deck} onToggle={(id) => edit((d) => toggleLock(d, id))} />
+        <ProtectedCards deck={deck} onChange={(id, level, on) => edit((d) => setProtection(d, id, level, on))} />
       </div>
 
       <div className="grid content-start gap-5">
         {error && <Callout tone="error">{error}</Callout>}
         {!plan && !running && (
           <EmptyState icon={<WandSparkles />} title="Plan your next upgrades">
-            Set a budget, strategy and goals, then generate suggestions. Nothing changes in your deck until you accept swaps and commit them. Lock any card you never want suggested as a cut.
+            Set a budget, power level and goals, then generate suggestions. Every add, cut and swap comes with a reason specific to this deck and its intent. Nothing changes until you accept swaps and commit them, or try them in the Sandbox.
           </EmptyState>
         )}
         {running && !plan && <Skeleton className="h-96 rounded-2xl" />}
@@ -267,9 +294,14 @@ function Workshop({ deck }: { deck: Deck }) {
                     Preview ready: {accepted.length} accepted swap{accepted.length === 1 ? "" : "s"}, costing about{" "}
                     <span className="text-ink">{formatPrice(accepted.reduce((n, s) => n + (s.add.prices.usd ?? 0), 0))}</span>. Your deck hasn&apos;t changed yet.
                   </p>
-                  <Button variant="primary" onClick={commit}>
-                    <Save /> Commit changes
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" onClick={tryInSandbox}>
+                      <FlaskConical /> Try in Sandbox
+                    </Button>
+                    <Button variant="primary" onClick={commit}>
+                      <Save /> Commit changes
+                    </Button>
+                  </div>
                 </Panel>
               </>
             )}
@@ -288,7 +320,9 @@ function Workshop({ deck }: { deck: Deck }) {
             ? {
                 deckCard: deckCardFor(detail),
                 identity: commanderIdentity(deck.commanders.map((c) => c.card)),
-                onToggleLock: deckCardFor(detail) ? () => edit((d) => toggleLock(d, detail.oracleId)) : undefined,
+                onProtection: deckCardFor(detail) ? (level, on) => edit((d) => setProtection(d, detail.oracleId, level, on)) : undefined,
+                deck,
+                analysis,
               }
             : undefined
         }
@@ -297,54 +331,49 @@ function Workshop({ deck }: { deck: Deck }) {
   );
 }
 
-function LockedCards({ deck, onToggle }: { deck: Deck; onToggle: (oracleId: string) => void }) {
+function ProtectedCards({ deck, onChange }: { deck: Deck; onChange: (oracleId: string, level: ProtectionLevel, on: boolean) => void }) {
   const [q, setQ] = useState("");
-  const locked = deck.cards.filter((d) => d.locked);
-  const matches = q.trim().length > 1 ? deck.cards.filter((d) => d.card.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
+  const protectedCards = deck.cards.filter((d) => d.locked || d.favorite || d.flavorEssential);
+  const matches = q.trim().length > 1 ? deck.cards.filter((d) => d.card.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
   return (
     <Panel>
-      <PanelHeader as="h3" title="Locked cards" icon={<Lock />} description="Never suggested as cuts. Commanders are always safe." />
+      <PanelHeader as="h3" title="Protected cards" icon={<Shield />} description="Locked cards are never cut. Favorites are cut only under Maximum Optimization. Flavor Essentials weigh theme fit heavily. Commanders are always safe." />
       <PanelBody className="grid gap-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-          <Input aria-label="Find a card to lock" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a card to lock…" className="pl-9" />
+          <Input aria-label="Find a card to protect" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a card to protect…" className="pl-9" />
         </div>
         {matches.length > 0 && (
           <ul className="grid gap-1">
             {matches.map((d) => (
-              <LockRow key={d.card.oracleId} name={d.card.name} locked={!!d.locked} onToggle={() => onToggle(d.card.oracleId)} />
+              <ProtectRow key={d.card.oracleId} dc={d} onChange={(level, on) => onChange(d.card.oracleId, level, on)} />
             ))}
           </ul>
         )}
-        {locked.length ? (
+        {protectedCards.length ? (
           <ul className="grid gap-1">
-            {locked.map((d) => (
-              <LockRow key={d.card.oracleId} name={d.card.name} locked onToggle={() => onToggle(d.card.oracleId)} />
-            ))}
+            {protectedCards
+              .filter((d) => !matches.includes(d))
+              .map((d) => (
+                <ProtectRow key={d.card.oracleId} dc={d} onChange={(level, on) => onChange(d.card.oracleId, level, on)} />
+              ))}
           </ul>
         ) : (
-          <p className="text-xs text-muted">No cards locked yet. You can also lock cards in the Deck Builder.</p>
+          <p className="text-xs text-muted">No protected cards yet. You can also mark cards from any card&apos;s detail view.</p>
         )}
       </PanelBody>
     </Panel>
   );
 }
 
-function LockRow({ name, locked, onToggle }: { name: string; locked: boolean; onToggle: () => void }) {
+function ProtectRow({ dc, onChange }: { dc: DeckCard; onChange: (level: ProtectionLevel, on: boolean) => void }) {
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={locked}
-        className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
-          locked ? "bg-gold-soft text-gold-strong" : "text-ink-2 hover:bg-panel-3",
-        )}
-      >
-        <span className="truncate">{name}</span>
-        {locked ? <Lock className="size-3.5 shrink-0" aria-label="Locked" /> : <LockOpen className="size-3.5 shrink-0" aria-label="Unlocked" />}
-      </button>
+    <li className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm text-ink-2 hover:bg-panel-3/60">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate">{dc.card.name}</span>
+        <ProtectionBadges dc={dc} />
+      </span>
+      <ProtectionToggles dc={dc} onChange={onChange} compact />
     </li>
   );
 }

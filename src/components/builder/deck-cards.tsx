@@ -1,6 +1,7 @@
 "use client";
 
 import { Crown, Lock, LockOpen, Minus, Plus, Trash2 } from "lucide-react";
+import { ProtectionBadges } from "@/components/mtg/protection";
 import type { Card, DeckCard, FunctionalCategory } from "@/lib/types";
 import { formatPrice } from "@/lib/cards/helpers";
 import { copyLimit } from "@/lib/rules/commander";
@@ -69,9 +70,7 @@ export function CardRow({
             className="flex w-full min-w-0 items-center gap-2 text-left text-sm text-ink hover:text-gold-strong focus-visible:text-gold-strong"
           >
             <span className="truncate">{card.name}</span>
-            {dc.locked && (
-              <Lock className="size-3 shrink-0 text-gold" aria-label="Locked" />
-            )}
+            <ProtectionBadges dc={dc} />
             {problem && (
               <Tooltip content={problem}>
                 <span>
@@ -205,9 +204,9 @@ export function CardTile({
             ×{dc.quantity}
           </span>
         )}
-        {dc.locked && (
-          <span className="rounded-full bg-black/70 p-1 text-gold-strong">
-            <Lock className="size-3.5" aria-label="Locked" />
+        {(dc.locked || dc.favorite || dc.flavorEssential) && (
+          <span className="rounded-full bg-black/70 px-1.5 py-1">
+            <ProtectionBadges dc={dc} />
           </span>
         )}
       </div>

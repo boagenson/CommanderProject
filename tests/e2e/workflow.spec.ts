@@ -118,3 +118,87 @@ test("shows a helpful error when Scryfall is unreachable", async ({ page }) => {
   await page.getByRole("button", { name: "Import deck" }).click();
   await expect(page.getByText(/Couldn't reach Scryfall/).first()).toBeVisible({ timeout: 20_000 });
 });
+
+test("phase 2: deck doctor, synergy, sandbox, history, playtest", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /sample/i }).first().click();
+  await expect(page.getByRole("heading", { name: "Second Breakfast (Sample)" })).toBeVisible();
+
+  // Commander dashboard shows detected strategy and both partners.
+  await expect(page.getByText(/Primary: /)).toBeVisible();
+  await page.getByRole("button", { name: "Commander details" }).click();
+  await expect(page.getByText("Frodo, Adventurous Hobbit").first()).toBeVisible();
+  await expect(page.getByText("Sam, Loyal Attendant").first()).toBeVisible();
+
+  // Deck Doctor nav destination opens the doctor tab of the active deck.
+  await page.getByRole("link", { name: "Deck Doctor" }).first().click();
+  await expect(page.getByRole("heading", { name: "What the deck is trying to do" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Combos & Engines" })).toBeVisible();
+  await expect(page.getByText("Infinite Combo").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Win conditions" })).toBeVisible();
+
+  // Deck intent persists.
+  await page.getByLabel("Upgrade philosophy").selectOption("Preserve Theme");
+  await expect(page.getByText("Deck intent saved.")).toBeVisible();
+  await page.getByLabel("Deck goals, in your own words").fill("Keep the Lord of the Rings flavor and make it more consistent.");
+  await page.getByRole("button", { name: "Save goals" }).click();
+
+  // Protections and "Why is this card here?" from the card dialog.
+  await page.getByRole("tab", { name: "Cards" }).click();
+  await page.getByRole("button", { name: "Academy Manufactor", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Why is this card here?" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Mark Favorite" }).click();
+  await expect(dialog.getByRole("button", { name: "Remove Favorite" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Test Cut" }).click();
+  await expect(dialog.getByText("Your saved deck has not been modified.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Restore card" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByText("100/100 cards")).toBeVisible();
+
+  // Synergy graph renders with filters.
+  await page.getByRole("tab", { name: "Synergy" }).click();
+  await expect(page.getByRole("img", { name: /Synergy graph with \d+ cards/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Theme/ }).click();
+
+  // Mana Base Doctor lives in Analysis.
+  await page.getByRole("tab", { name: "Analysis" }).click();
+  await expect(page.getByRole("heading", { name: "Mana Base Doctor" })).toBeVisible();
+
+  // Sandbox: remove a card, compare, save as a new version.
+  await page.getByRole("tab", { name: "Sandbox" }).click();
+  await page.getByRole("button", { name: "Remove Sun Titan in sandbox" }).click();
+  await expect(page.getByText("1 added, 1 removed", { exact: false }).or(page.getByText("0 added, 1 removed", { exact: false }))).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("No changes yet")).toBeVisible();
+  await page.getByRole("button", { name: "Remove Sun Titan in sandbox" }).click();
+  await page.getByRole("button", { name: "Save sandbox as new version" }).click();
+  await page.getByLabel("Notes").fill("Trying life without Sun Titan");
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(page.getByText("Saved as version 1.")).toBeVisible();
+  await expect(page.getByText("99/100 cards")).toBeVisible();
+
+  // History shows the change log with the removed card.
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Trying life without Sun Titan")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sun Titan", exact: true })).toBeVisible();
+
+  // Playtest: opening hands and a recorded game.
+  await page.getByRole("tab", { name: "Playtest" }).click();
+  await page.getByRole("button", { name: "Draw 7" }).click();
+  await expect(page.getByText(/cards in library/)).toBeVisible();
+  await page.getByRole("button", { name: /Mulligan to 6/ }).click();
+  await page.getByRole("button", { name: "Keep", exact: true }).click();
+  await page.getByRole("button", { name: "Draw next card" }).click();
+  await page.getByRole("button", { name: "Run simulation" }).click();
+  await expect(page.getByText("Lands in opening hand (100 hands)")).toBeVisible();
+  await page.getByRole("button", { name: "Mana Screwed" }).click();
+  await page.getByRole("button", { name: "Save game" }).click();
+  await expect(page.getByText("Game recorded.", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 game recorded", { exact: true })).toBeVisible();
+
+  // Everything survives a reload.
+  await page.reload();
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Trying life without Sun Titan")).toBeVisible();
+});

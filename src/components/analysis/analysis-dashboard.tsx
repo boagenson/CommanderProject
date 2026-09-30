@@ -11,6 +11,7 @@ import { ManaSymbol } from "@/components/mtg/mana";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { cn } from "@/components/ui/utils";
 import { ChartPanel, HorizontalBars, MANA_SERIES, ManaCurveChart, PipsVsSourcesChart } from "./charts";
+import { ManaDoctorPanel } from "./mana-doctor";
 
 export function AnalysisDashboard({ deck, analysis: a, onOpenCard }: { deck: Deck; analysis: DeckAnalysis; onOpenCard: (name: string) => void }) {
   const currency = useDeckStore((s) => s.preferences.priceCurrency);
@@ -101,6 +102,8 @@ export function AnalysisDashboard({ deck, analysis: a, onOpenCard }: { deck: Dec
           <PipsVsSourcesChart data={manaRows} />
         </ChartPanel>
       </div>
+
+      <ManaDoctorPanel report={a.mana} />
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
         <ManaSourcesPanel rows={manaRows} />
