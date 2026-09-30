@@ -140,7 +140,7 @@ export function SynergyGraphView({ graph, onOpenCard }: { graph: SynergyGraph; o
     <div className="grid gap-4">
       <Panel className="flex flex-wrap items-center gap-2 p-3">
         <Filter className="size-4 text-gold" aria-hidden />
-        {SYNERGY_EDGE_KINDS.map((k) => (
+        {SYNERGY_EDGE_KINDS.filter((k) => graph.edges.some((e) => e.kind === k)).map((k) => (
           <ToggleChip
             key={k}
             pressed={kinds.has(k)}
