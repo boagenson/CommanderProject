@@ -82,6 +82,11 @@ export function SwapCard({
         <p className="text-ink-2">
           <span className="font-medium text-warn">Why cut {swap.remove.name}: </span>
           {swap.removeReason}
+          {swap.removeProtection && (
+            <Badge tone={swap.removeProtection === "favorite" ? "danger" : "info"} className="ml-2 align-middle">
+              {swap.removeProtection === "favorite" ? "Favorite" : "Flavor Essential"}
+            </Badge>
+          )}
         </p>
       </div>
 

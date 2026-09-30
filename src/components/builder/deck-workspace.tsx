@@ -5,30 +5,38 @@ import { useRouter } from "next/navigation";
 import {
   ChartColumn,
   CircleCheck,
+  ClipboardList,
   Copy,
   Crown,
+  FlaskConical,
   Hammer,
+  History,
+  Link2,
   LoaderCircle,
   Pencil,
   Sparkles,
+  Stethoscope,
   Trash2,
   TriangleAlert,
   Upload,
   WandSparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Card, Deck } from "@/lib/types";
+import type { Card, Deck, DeckAnalysis, DeckDoctorReport } from "@/lib/types";
 import { formatPrice } from "@/lib/cards/helpers";
 import { importDecklist } from "@/lib/deck/import";
+import { getIntent } from "@/lib/deck/intent";
 import {
   addCard,
   exportDecklist,
   removeCard,
   setCategoryOverride,
   setCommanders,
+  setProtection,
   setQuantity,
-  toggleLock,
+  setTagOverride,
 } from "@/lib/deck/operations";
+import { STRATEGY_DESCRIPTIONS } from "@/lib/doctor/strategy";
 import { commanderIdentity, deckSize, COMMANDER_DECK_SIZE } from "@/lib/rules/commander";
 import { describeScryfallError } from "@/lib/scryfall";
 import { useDeckById, useDeckStore } from "@/lib/state/deck-store";
@@ -38,22 +46,33 @@ import { useDeckEditor } from "@/lib/state/use-deck-editor";
 import { AnalysisDashboard } from "@/components/analysis/analysis-dashboard";
 import { ThemesPanel } from "@/components/analysis/themes-panel";
 import { CommanderPicker } from "@/components/decks/commander-picker";
+import { DeckDoctor, useDoctorReport } from "@/components/doctor/deck-doctor";
+import { VersionHistory } from "@/components/history/version-history";
 import { CardDetailDialog } from "@/components/mtg/card-detail";
-import { CardArt } from "@/components/mtg/card-image";
+import { CardArt, CardImage } from "@/components/mtg/card-image";
 import { ColorPips } from "@/components/mtg/mana";
+import { OracleText } from "@/components/mtg/oracle-text";
+import { HandSimulator } from "@/components/playtest/hand-simulator";
+import { PlaytestPanel } from "@/components/playtest/playtest-panel";
+import { SandboxPanel } from "@/components/sandbox/sandbox-panel";
+import { SynergyGraphView } from "@/components/synergy/synergy-graph";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DeckEditor } from "./deck-editor";
 
-type Tab = "cards" | "analysis" | "themes";
+const TABS = ["cards", "doctor", "analysis", "themes", "synergy", "sandbox", "history", "playtest"] as const;
+type Tab = (typeof TABS)[number];
+const isTab = (v: string): v is Tab => (TABS as readonly string[]).includes(v);
 
 export function DeckWorkspace({ id }: { id: string }) {
   const { deck, loaded } = useDeckById(id);
   const analysis = useAnalysis(deck);
+  const report = useDoctorReport(deck, analysis);
   const setPreferences = useDeckStore((s) => s.setPreferences);
   const activeDeckId = useDeckStore((s) => s.preferences.activeDeckId);
   const [tab, setTab] = useState<Tab>("cards");
@@ -67,11 +86,17 @@ export function DeckWorkspace({ id }: { id: string }) {
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync tab from URL hash once on mount
-    if (hash === "analysis" || hash === "themes" || hash === "cards") setTab(hash);
+    if (isTab(hash)) setTab(hash);
+    const onHash = () => {
+      const h = window.location.hash.slice(1);
+      if (isTab(h)) setTab(h);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   if (!loaded) return <Skeleton className="h-64 rounded-2xl" />;
-  if (!deck || !analysis) {
+  if (!deck || !analysis || !report) {
     return (
       <EmptyState icon={<Hammer />} title="Deck not found" action={<Button asChild variant="primary"><Link href="/decks">Back to decks</Link></Button>}>
         This deck may have been deleted, or it was saved in a different browser.
@@ -82,10 +107,11 @@ export function DeckWorkspace({ id }: { id: string }) {
   const detailEntry = detail ? deck.cards.find((d) => d.card.oracleId === detail.oracleId) : undefined;
   const commanderEntry = detail ? deck.commanders.find((c) => c.card.oracleId === detail.oracleId) : undefined;
   const isCommander = !!commanderEntry;
+  const openByName = (name: string) => setDetail(findCard(deck, name));
 
   return (
     <div className="grid gap-6">
-      <DeckHeader deck={deck} errors={analysis.validation.filter((v) => v.severity === "error").length} price={analysis.totalPrice} />
+      <DeckHeader deck={deck} analysis={analysis} report={report} errors={analysis.validation.filter((v) => v.severity === "error").length} price={analysis.totalPrice} />
 
       <Tabs
         value={tab}
@@ -98,21 +124,54 @@ export function DeckWorkspace({ id }: { id: string }) {
           <TabsTrigger value="cards">
             <Hammer /> Cards
           </TabsTrigger>
+          <TabsTrigger value="doctor">
+            <Stethoscope /> Deck Doctor
+          </TabsTrigger>
           <TabsTrigger value="analysis">
             <ChartColumn /> Analysis
           </TabsTrigger>
           <TabsTrigger value="themes">
             <Sparkles /> Themes
           </TabsTrigger>
+          <TabsTrigger value="synergy">
+            <Link2 /> Synergy
+          </TabsTrigger>
+          <TabsTrigger value="sandbox">
+            <FlaskConical /> Sandbox
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History /> History
+          </TabsTrigger>
+          <TabsTrigger value="playtest">
+            <ClipboardList /> Playtest
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="cards">
           <DeckEditor deck={deck} analysis={analysis} onOpenCard={setDetail} />
         </TabsContent>
+        <TabsContent value="doctor">
+          <DeckDoctor deck={deck} analysis={analysis} onOpenCard={openByName} />
+        </TabsContent>
         <TabsContent value="analysis">
-          <AnalysisDashboard deck={deck} analysis={analysis} onOpenCard={(name) => setDetail(findCard(deck, name))} />
+          <AnalysisDashboard deck={deck} analysis={analysis} onOpenCard={openByName} />
         </TabsContent>
         <TabsContent value="themes">
-          <ThemesPanel themes={analysis.themes} onOpenCard={(name) => setDetail(findCard(deck, name))} />
+          <ThemesPanel themes={analysis.themes} onOpenCard={openByName} />
+        </TabsContent>
+        <TabsContent value="synergy">
+          <SynergyGraphView graph={analysis.graph} onOpenCard={openByName} />
+        </TabsContent>
+        <TabsContent value="sandbox">
+          <SandboxPanel deck={deck} analysis={analysis} onOpenCard={openByName} />
+        </TabsContent>
+        <TabsContent value="history">
+          <VersionHistory deck={deck} analysis={analysis} onOpenCard={openByName} />
+        </TabsContent>
+        <TabsContent value="playtest">
+          <div className="grid gap-6">
+            <HandSimulator deck={deck} onOpenCard={openByName} />
+            <PlaytestPanel deck={deck} onOpenCard={openByName} />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -124,7 +183,11 @@ export function DeckWorkspace({ id }: { id: string }) {
           deckCard: detailEntry ?? (commanderEntry && { ...commanderEntry, quantity: 1 }),
           isCommander,
           identity: commanderIdentity(deck.commanders.map((c) => c.card)),
-          onToggleLock: detailEntry ? () => edit((d) => toggleLock(d, detailEntry.card.oracleId)) : undefined,
+          onProtection: detailEntry ? (level, on) => edit((d) => setProtection(d, detailEntry.card.oracleId, level, on)) : undefined,
+          onTag: detailEntry || commanderEntry ? (tag, state) => edit((d) => setTagOverride(d, detail!.oracleId, tag, state)) : undefined,
+          deck,
+          analysis,
+          onOpenCard: openByName,
           onRemove: detailEntry
             ? () => {
                 edit((d) => removeCard(d, detailEntry.card.oracleId, detailEntry.board ?? "main"));
@@ -147,8 +210,12 @@ function findCard(deck: Deck, name: string): Card | null {
   return deck.commanders.find((c) => c.card.name === name)?.card ?? deck.cards.find((d) => d.card.name === name)?.card ?? null;
 }
 
-function DeckHeader({ deck, errors, price }: { deck: Deck; errors: number; price: number }) {
+function DeckHeader({ deck, analysis, report, errors, price }: { deck: Deck; analysis: DeckAnalysis; report: DeckDoctorReport; errors: number; price: number }) {
   const router = useRouter();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const intent = getIntent(deck);
+  const strategies = [report.primary, ...report.secondary].filter((s): s is NonNullable<typeof s> => !!s).slice(0, 3);
   const deleteDeck = useDeckStore((s) => s.deleteDeck);
   const saveDeck = useDeckStore((s) => s.saveDeck);
   const currency = useDeckStore((s) => s.preferences.priceCurrency);
@@ -221,11 +288,85 @@ function DeckHeader({ deck, errors, price }: { deck: Deck; errors: number; price
               <WandSparkles /> Upgrade
             </Link>
           </Button>
-          <Button variant="danger" size="sm" onClick={remove} aria-label="Delete deck">
+          <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)} aria-label="Delete deck">
             <Trash2 />
           </Button>
         </div>
       </div>
+      <div className="relative border-t border-line/60 bg-panel/80 px-6 py-3 sm:px-8">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {strategies.map((s, i) => (
+            <Badge key={s.name} tone={i === 0 ? "gold" : "neutral"}>
+              {i === 0 ? "Primary: " : ""}
+              {s.name}
+            </Badge>
+          ))}
+          {analysis.themes.slice(0, 3).map((t) => (
+            <Badge key={t.id} tone="info">{t.name}</Badge>
+          ))}
+          <Badge tone="neutral">{intent.power}</Badge>
+          <button type="button" onClick={() => setExpanded((e) => !e)} className="ml-auto text-xs text-gold-strong hover:underline" aria-expanded={expanded}>
+            {expanded ? "Hide commander details" : "Commander details"}
+          </button>
+        </div>
+        {expanded && (
+          <div className="mt-4 grid gap-4">
+            <div className={`grid gap-4 ${second ? "lg:grid-cols-2" : ""}`}>
+              {deck.commanders.map((c) => (
+                <div key={c.card.oracleId} className="flex gap-4 rounded-2xl border border-line bg-bg-raised/70 p-3">
+                  <div className="w-28 shrink-0 sm:w-36">
+                    <CardImage card={c.card} size="normal" />
+                  </div>
+                  <div className="min-w-0 grid content-start gap-2 text-sm">
+                    <p className="font-display text-base text-ink">{c.card.name}</p>
+                    <p className="text-xs text-ink-2">{c.card.typeLine}</p>
+                    <ColorPips colors={c.card.colorIdentity} size="sm" />
+                    <OracleText text={c.card.oracleText} className="text-[13px] leading-relaxed text-ink-2" />
+                    <div className="flex flex-wrap gap-1">
+                      {(analysis.cardCategories[c.card.name]?.tags ?? []).map((t) => (
+                        <Badge key={t.value} tone="info">{t.value}</Badge>
+                      ))}
+                      {(analysis.cardCategories[c.card.name]?.roles ?? []).slice(0, 3).map((r) => (
+                        <Badge key={r.value} tone="gold">{r.value}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted">Strategy</p>
+                <p className="mt-1 text-ink-2">{report.commanderStrategy}</p>
+                {report.primary && <p className="mt-1 text-xs text-muted">{STRATEGY_DESCRIPTIONS[report.primary.name]}</p>}
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted">Game plan</p>
+                <p className="mt-1 text-ink-2">{report.gamePlan}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted">Deck intent</p>
+                <p className="mt-1 text-ink-2">
+                  {intent.power} · {intent.primaryStrategy ?? report.primary?.name ?? "strategy auto-detected"} · {intent.philosophy}
+                </p>
+                {intent.goals.trim() && <p className="mt-1 line-clamp-3 text-xs text-muted">&ldquo;{intent.goals.trim()}&rdquo;</p>}
+                <Link href="#doctor" className="mt-1 inline-block text-xs text-gold-strong hover:underline">
+                  Edit in Deck Doctor
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete "${deck.name}"?`}
+        description="The deck, its versions and playtest notes will be removed. You can undo from the toast right after."
+        confirmLabel="Delete deck"
+        destructive
+        onConfirm={() => void remove()}
+      />
     </header>
   );
 }

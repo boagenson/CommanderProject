@@ -1,9 +1,10 @@
 "use client";
 
-import { ExternalLink, Lock, LockOpen, Minus, Plus, Trash2 } from "lucide-react";
-import type { Card, Color, DeckCard, FunctionalCategory } from "@/lib/types";
-import { FUNCTIONAL_CATEGORIES } from "@/lib/types";
+import { ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
+import type { Card, Color, Deck, DeckAnalysis, DeckCard, FunctionalCategory, ProtectionLevel, ThematicTag } from "@/lib/types";
+import { FUNCTIONAL_CATEGORIES, THEMATIC_TAGS } from "@/lib/types";
 import { classifyCard } from "@/lib/analysis/categories";
+import { classifyTags } from "@/lib/analysis/tags";
 import { formatPrice } from "@/lib/cards/helpers";
 import { isWithinIdentity, quantityWarning } from "@/lib/rules/commander";
 import { cardThemeRoles } from "@/lib/synergy/engine";
@@ -15,6 +16,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Callout } from "@/components/ui/feedback";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CardImage } from "./card-image";
+import { TestCut, WhyHere } from "./card-explainer";
+import { ProtectionToggles } from "./protection";
 import { ColorPips, ManaCost } from "./mana";
 import { OracleText } from "./oracle-text";
 
@@ -22,11 +25,18 @@ export interface CardDeckActions {
   deckCard?: DeckCard;
   isCommander?: boolean;
   identity?: Color[];
+  /** Kept for callers that only know about locking; prefer onProtection. */
   onToggleLock?: () => void;
+  onProtection?: (level: ProtectionLevel, on: boolean) => void;
+  onTag?: (tag: ThematicTag, state: "auto" | "on" | "off") => void;
   onRemove?: () => void;
   onQuantity?: (q: number) => void;
   onCategory?: (category: FunctionalCategory, state: "auto" | "on" | "off") => void;
   onAdd?: () => void;
+  /** When both are given, the dialog shows "Why is this card here?" and "Test Cut". */
+  deck?: Deck;
+  analysis?: DeckAnalysis;
+  onOpenCard?: (name: string) => void;
 }
 
 export function CardDetailDialog({
@@ -60,6 +70,10 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
   const added = new Set(dc?.categoryOverrides?.add ?? []);
   const removed = new Set(dc?.categoryOverrides?.remove ?? []);
   const roles = cardThemeRoles(card);
+  const tagMatches = classifyTags(card);
+  const autoTags = new Set(tagMatches.map((m) => m.value));
+  const addedTags = new Set(dc?.tagOverrides?.add ?? []);
+  const removedTags = new Set(dc?.tagOverrides?.remove ?? []);
   const outside = actions?.identity && actions.identity.length > 0 && !isWithinIdentity(card, actions.identity);
   const qtyWarning = dc ? quantityWarning(card, dc.quantity) : null;
 
@@ -107,7 +121,7 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
       {outside && <Callout tone="error" title="Outside color identity">This card&apos;s color identity doesn&apos;t fit your commander.</Callout>}
       {qtyWarning && <Callout tone="warning">{qtyWarning}</Callout>}
 
-      {actions && (dc ? actions.onQuantity || actions.onToggleLock || actions.onRemove : actions.onAdd) && (
+      {actions && (dc ? actions.onQuantity || actions.onToggleLock || actions.onProtection || actions.onRemove : actions.onAdd) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-raised p-3">
           {dc && actions.onQuantity && (
             <div className="flex items-center gap-1" role="group" aria-label="Quantity">
@@ -120,11 +134,9 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
               </Button>
             </div>
           )}
-          {dc && actions.onToggleLock && (
-            <Button size="sm" variant={dc.locked ? "outline" : "secondary"} onClick={actions.onToggleLock} aria-pressed={!!dc.locked}>
-              {dc.locked ? <Lock /> : <LockOpen />}
-              {dc.locked ? "Locked" : "Lock card"}
-            </Button>
+          {dc && !actions.isCommander && actions.onProtection && <ProtectionToggles dc={dc} onChange={actions.onProtection} />}
+          {dc && !actions.isCommander && !actions.onProtection && actions.onToggleLock && (
+            <ProtectionToggles dc={dc} onChange={(level, on) => level === "locked" && on !== !!dc.locked && actions.onToggleLock!()} />
           )}
           {dc && actions.onRemove && (
             <Button size="sm" variant="danger" onClick={actions.onRemove}>
@@ -136,8 +148,21 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
               <Plus /> Add to deck
             </Button>
           )}
-          {dc?.locked && <span className="text-xs text-muted">Upgrades will never suggest cutting this card.</span>}
         </div>
+      )}
+      {dc && (dc.locked || dc.favorite || dc.flavorEssential) && (
+        <p className="-mt-3 text-[11px] text-muted">
+          {dc.locked && "Locked: upgrades will never suggest cutting this card. "}
+          {dc.favorite && !dc.locked && "Favorite: only cut when the improvement is clear. "}
+          {dc.flavorEssential && "Flavor Essential: theme fit counts extra when weighing this card."}
+        </p>
+      )}
+
+      {actions?.deck && actions.analysis && (dc || actions.isCommander) && (
+        <>
+          <WhyHere card={card} deck={actions.deck} analysis={actions.analysis} onOpenCard={actions.onOpenCard} />
+          {!actions.isCommander && <TestCut card={card} deck={actions.deck} analysis={actions.analysis} />}
+        </>
       )}
 
       <section>
@@ -179,6 +204,46 @@ function CardDetailBody({ card, actions }: { card: Card; actions?: CardDeckActio
           <p className="text-xs text-muted">No categories detected.</p>
         )}
         {dc && <p className="mt-2 text-[11px] text-muted">Categories are detected from rules text. Click one to correct it for this deck.</p>}
+      </section>
+
+      <section>
+        <h3 className="mb-2 font-display text-sm text-ink">Thematic tags</h3>
+        {dc && actions?.onTag ? (
+          <div className="flex flex-wrap gap-1.5">
+            {THEMATIC_TAGS.map((tag) => {
+              const state: "auto" | "on" | "off" = addedTags.has(tag) ? "on" : removedTags.has(tag) ? "off" : "auto";
+              const active = state === "on" || (state === "auto" && autoTags.has(tag));
+              const match = tagMatches.find((m) => m.value === tag);
+              return (
+                <Tooltip key={tag} content={state === "auto" ? (match ? `Detected: ${match.reason} (${Math.round(match.confidence * 100)}%). Click to remove.` : `Click to tag this card as ${tag}.`) : "Set manually. Click to restore automatic detection."}>
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => actions.onTag!(tag, nextState(state, autoTags.has(tag)))}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      active ? "border-info/60 bg-info/10 text-info" : "border-line text-muted hover:border-line-strong hover:text-ink-2"
+                    }`}
+                  >
+                    {tag}
+                    {state !== "auto" && <span className="ml-1 text-[10px] uppercase opacity-80">manual</span>}
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>
+        ) : tagMatches.length ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {tagMatches.map((m) => (
+              <li key={m.value}>
+                <Tooltip content={`${m.reason} (${Math.round(m.confidence * 100)}%)`}>
+                  <span><Badge tone="info">{m.value}</Badge></span>
+                </Tooltip>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted">No thematic tags detected.</p>
+        )}
       </section>
 
       {roles.length > 0 && (
